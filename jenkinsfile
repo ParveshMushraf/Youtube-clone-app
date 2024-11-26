@@ -1,0 +1,53 @@
+pipeline {
+    agent any 
+    
+    stages {
+        stage('clean workspace'){
+            steps{
+                cleanWs()
+            }
+        }
+        stage ("Git Checkout") {
+            steps {
+                git branch: 'main', url: 'https://github.com/ParveshMushraf/Youtube-clone-app.git'
+            }
+        }
+        stage('OWASP FS SCAN') {
+            steps {
+                dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+            }
+        }
+        stage ("Build Docker Image") {
+            steps {
+                sh "docker build -t netflix ."
+            }
+        }
+        stage ("Tag & Push to DockerHub") {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker') {
+                        sh "docker tag netflix mujikutty/netflix:latest"
+                        sh "docker push mujikutty/netflix:latest"
+                    }
+                }
+            }
+        }
+        stage ("Docker Scout Image Analysis ") {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker') {
+                        sh 'docker-scout quickview mujikutty/netflix:latest'
+                        sh 'docker-scout cves mujikutty/netflix:latest'
+                        sh 'docker-scout recommendations mujikutty/netflix:latest'
+                    }
+                }
+            }
+        }
+        stage ("Deploy to Docker Conatiner") {
+            steps {
+                sh "docker run -itd --name netflix -p 3000:80 netflix:latest"
+            }
+        }
+    }
+     
